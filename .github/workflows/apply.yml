@@ -1,0 +1,105 @@
+name: "Bootstrap — Validate & Apply"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+  # Apply is manual only — bootstrap is sensitive and should never auto-apply
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to run"
+        required: true
+        default: "plan"
+        type: choice
+        options:
+          - plan
+          - apply
+
+permissions:
+  id-token: write  # OIDC federation with AWS (after first manual apply)
+  contents: read
+
+env:
+  TF_VERSION: "1.7.5"
+  AWS_REGION: "ap-southeast-2"
+
+jobs:
+  validate:
+    name: "Validate & Security Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Format Check
+        working-directory: terraform
+        run: terraform fmt -check
+
+      - name: Security Scan — tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform
+          soft_fail: false
+
+  apply:
+    name: "Terraform ${{ github.event.inputs.action || 'plan' }}"
+    needs: validate
+    # Only run on manual dispatch or main branch push; never on PRs
+    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # OIDC federation — requires AWS_DEPLOY_ROLE_ARN secret after first manual apply.
+      # On first run, use local credentials instead (see README).
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Output Role ARN
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        working-directory: terraform
+        run: |
+          echo "## Bootstrap Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Set this as \`AWS_DEPLOY_ROLE_ARN\` in each repo's GitHub environment secrets:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          terraform output -raw deploy_role_arn >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
