@@ -7,3 +7,13 @@ output "oidc_provider_arn" {
   description = "GitHub OIDC provider ARN — reuse this if adding more roles later"
   value       = aws_iam_openid_connect_provider.github.arn
 }
+
+output "state_bucket" {
+  description = "S3 bucket name for Terraform remote state — use in each repo's backend config"
+  value       = aws_s3_bucket.terraform_state.bucket
+}
+
+output "state_lock_table" {
+  description = "DynamoDB table name for Terraform state locking"
+  value       = aws_dynamodb_table.terraform_lock.name
+}

@@ -1,12 +1,17 @@
-# WaterApps AWS Bootstrap — OIDC + IAM Deploy Role
+# WaterApps AWS Bootstrap — OIDC + IAM Deploy Role + Terraform State
 #
-# Provisions the GitHub Actions OIDC identity provider and the scoped
-# IAM role used by all WaterApps CI/CD pipelines to deploy to AWS.
+# Provisions:
+#   - S3 bucket + DynamoDB table for shared Terraform remote state
+#   - GitHub Actions OIDC identity provider
+#   - Scoped IAM deploy role used by all WaterApps CI/CD pipelines
 #
-# First-run: apply locally with AWS credentials (aws sso login / env vars).
-# Subsequent runs: use the output role ARN via GitHub OIDC — no long-lived keys.
+# First-run workflow (one-time local bootstrap):
+#   1. terraform apply  — creates bucket, DynamoDB, OIDC provider, IAM role
+#   2. Uncomment the S3 backend block below
+#   3. terraform init   — migrates local state into the new S3 bucket
+#   4. git push         — all future applies run via GitHub Actions pipeline
 #
-# Cost estimate: $0/month — IAM and OIDC resources are free.
+# Cost estimate: ~$0/month (S3 + DynamoDB at this scale are effectively free)
 
 terraform {
   required_version = ">= 1.5.0, < 2.0.0"
@@ -18,7 +23,7 @@ terraform {
     }
   }
 
-  # Uncomment for remote state (recommended after first apply)
+  # Step 2: uncomment after first local apply, then run: terraform init
   # backend "s3" {
   #   bucket         = "waterapps-terraform-state"
   #   key            = "bootstrap/terraform.tfstate"
@@ -44,6 +49,57 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 # ─────────────────────────────────────────────
+# TERRAFORM STATE — S3 bucket + DynamoDB lock
+# ─────────────────────────────────────────────
+
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "${var.project}-terraform-state"
+
+  # Prevent accidental destroy — must empty bucket manually before removing
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_s3_bucket_versioning" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_dynamodb_table" "terraform_lock" {
+  name         = "${var.project}-terraform-lock"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+}
+
+# ─────────────────────────────────────────────
 # OIDC — GitHub Actions identity provider
 # ─────────────────────────────────────────────
 
@@ -53,9 +109,13 @@ resource "aws_iam_openid_connect_provider" "github" {
   # sts.amazonaws.com is the audience GitHub Actions uses when assuming roles
   client_id_list = ["sts.amazonaws.com"]
 
-  # GitHub's TLS certificate thumbprint — stable across GitHub's CDN
+  # GitHub's TLS certificate thumbprints — multiple listed for resilience across cert rotations.
   # Source: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc_verify-thumbprint.html
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  thumbprint_list = [
+    "6938fd4d98bab03faadb97b34396831e3780aea1", # DigiCert (legacy)
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd", # DigiCert (2023)
+    "7560d6f40fa55195f740ee2b1b7c0b4836cbe103", # current
+  ]
 }
 
 # ─────────────────────────────────────────────
@@ -200,9 +260,9 @@ resource "aws_iam_role_policy" "deploy_permissions" {
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project}-*"
       },
       {
-        Sid    = "IamPassRoleLambdaOnly"
-        Effect = "Allow"
-        Action = ["iam:PassRole"]
+        Sid      = "IamPassRoleLambdaOnly"
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project}-*"
         Condition = {
           StringEquals = {
@@ -233,6 +293,75 @@ resource "aws_iam_role_policy" "deploy_permissions" {
         Effect   = "Allow"
         Action   = ["sts:GetCallerIdentity"]
         Resource = "*"
+      },
+
+      # ── S3 — Terraform remote state ────────────────────────────────────────
+      # Read/write state objects and manage the bucket itself (lifecycle).
+      {
+        Sid    = "S3StateObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.project}-terraform-state",
+          "arn:aws:s3:::${var.project}-terraform-state/*",
+        ]
+      },
+      {
+        Sid    = "S3StateBucketManage"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:GetBucketVersioning",
+          "s3:PutBucketVersioning",
+          "s3:GetEncryptionConfiguration",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:GetBucketTagging",
+          "s3:PutBucketTagging",
+        ]
+        Resource = "arn:aws:s3:::${var.project}-terraform-state"
+      },
+
+      # ── DynamoDB — Terraform state locking ─────────────────────────────────
+      {
+        Sid    = "DynamoDBStateLock"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:CreateTable",
+          "dynamodb:DeleteTable",
+          "dynamodb:DescribeTable",
+          "dynamodb:TagResource",
+          "dynamodb:UntagResource",
+          "dynamodb:ListTagsOfResource",
+        ]
+        Resource = "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.project}-terraform-lock"
+      },
+
+      # ── IAM OIDC — bootstrap manages its own OIDC provider ─────────────────
+      {
+        Sid    = "OidcProviderManage"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:GetOpenIDConnectProvider",
+          "iam:UpdateOpenIDConnectProviderThumbprint",
+          "iam:AddClientIDToOpenIDConnectProvider",
+          "iam:RemoveClientIDFromOpenIDConnectProvider",
+          "iam:TagOpenIDConnectProvider",
+          "iam:UntagOpenIDConnectProvider",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
       },
     ]
   })

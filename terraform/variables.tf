@@ -30,7 +30,7 @@ variable "github_org" {
 variable "github_repos" {
   description = "GitHub repos authorised to assume the deploy role via OIDC"
   type        = list(string)
-  default     = ["waterapps-contact-form"]
+  default     = ["waterapps-aws-bootstrap", "waterapps-contact-form"]
 
   validation {
     condition     = length(var.github_repos) > 0
