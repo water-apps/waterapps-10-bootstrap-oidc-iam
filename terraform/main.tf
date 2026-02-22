@@ -41,6 +41,12 @@ provider "aws" {
   }
 }
 
+locals {
+  # During repo migration, allow both the legacy owner and the GitHub org.
+  # Keep var.github_org as the primary source, but include water-apps for moved repos.
+  github_oidc_orgs = distinct([var.github_org, "water-apps"])
+}
+
 # ─────────────────────────────────────────────
 # DATA
 # ─────────────────────────────────────────────
@@ -142,8 +148,11 @@ resource "aws_iam_role" "github_deploy" {
           # Allow any branch/tag in authorised repos — branch restrictions
           # are enforced by GitHub environment protection rules instead.
           "token.actions.githubusercontent.com:sub" = [
-            for repo in var.github_repos :
-            "repo:${var.github_org}/${repo}:*"
+            for pair in flatten([
+              for org in local.github_oidc_orgs : [
+                for repo in var.github_repos : "repo:${org}/${repo}:*"
+              ]
+            ]) : pair
           ]
         }
       }
@@ -172,6 +181,7 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "lambda:DeleteFunction",
           "lambda:GetFunction",
           "lambda:GetFunctionConfiguration",
+          "lambda:GetFunctionCodeSigningConfig",
           "lambda:AddPermission",
           "lambda:RemovePermission",
           "lambda:ListVersionsByFunction",
@@ -211,6 +221,34 @@ resource "aws_iam_role_policy" "deploy_permissions" {
         ]
         Resource = "arn:aws:apigateway:${data.aws_region.current.name}::/apis/*"
       },
+      # API Gateway tag operations for v2 APIs use the legacy apigateway action namespace
+      # against /tags/... resources, which Terraform calls during create/update.
+      {
+        Sid    = "ApiGatewayTags"
+        Effect = "Allow"
+        Action = [
+          "apigateway:GET",
+          "apigateway:POST",
+          "apigateway:DELETE",
+        ]
+        Resource = "arn:aws:apigateway:${data.aws_region.current.name}::/tags/*"
+      },
+      # Some API Gateway v2 operations are authorized under the legacy apigateway action
+      # namespace on /apis and /apis/* collection resources.
+      {
+        Sid    = "ApiGatewayLegacyCollection"
+        Effect = "Allow"
+        Action = [
+          "apigateway:GET",
+          "apigateway:POST",
+          "apigateway:PATCH",
+          "apigateway:DELETE",
+        ]
+        Resource = [
+          "arn:aws:apigateway:${data.aws_region.current.name}::/apis",
+          "arn:aws:apigateway:${data.aws_region.current.name}::/apis/*",
+        ]
+      },
       # GET /apis required for Terraform refresh (list operation, no resource scope)
       {
         Sid      = "ApiGatewayList"
@@ -227,7 +265,6 @@ resource "aws_iam_role_policy" "deploy_permissions" {
         Action = [
           "logs:CreateLogGroup",
           "logs:DeleteLogGroup",
-          "logs:DescribeLogGroups",
           "logs:PutRetentionPolicy",
           "logs:ListTagsLogGroup",
           "logs:TagLogGroup",
@@ -236,6 +273,13 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project}-*",
           "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/apigateway/${var.project}-*",
         ]
+      },
+      # DescribeLogGroups is a list-style API and is commonly evaluated against "*".
+      {
+        Sid      = "LogsDescribeGroups"
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
       },
 
       # ── IAM — Lambda execution roles ──────────────────────────────────────
