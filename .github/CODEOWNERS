@@ -1,0 +1,9 @@
+# Default owner for this repo
+* @vkaushik13
+
+# Sensitive infrastructure and deployment controls
+.github/workflows/** @vkaushik13
+terraform/** @vkaushik13
+scripts/** @vkaushik13
+tests/** @vkaushik13
+
