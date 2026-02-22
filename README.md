@@ -46,6 +46,28 @@ terraform apply
 
 For team-safe ongoing changes, configure remote Terraform state (S3 + DynamoDB locking) before using the GitHub Actions `workflow_dispatch` plan/apply path. The workflow now requires remote state inputs and will block local-state execution in CI.
 
+## GitOps Approval Flow (Recommended)
+
+Current CI/CD flow:
+- Push / PR: validate, OIDC preflight, tests, tfsec
+- PR (optional): Terraform plan when OIDC + remote-state repo config is present
+- Manual `workflow_dispatch`: plan/apply with `production` environment approval
+
+Configure for PR plan + approved apply:
+
+- Secret:
+  - `AWS_DEPLOY_ROLE_ARN`
+- Repo vars:
+  - `BOOTSTRAP_TF_STATE_BUCKET`
+  - `BOOTSTRAP_TF_STATE_KEY` (optional override; default: `bootstrap/terraform.tfstate`)
+  - `BOOTSTRAP_TF_LOCK_TABLE`
+
+Recommended GitHub settings:
+- Branch protection on `main` (require PR + checks)
+- `production` environment required reviewers (approval gate for apply)
+
+Note: the very first bootstrap apply can still require a local run (OIDC chicken-and-egg), but subsequent changes should follow the GitOps flow above.
+
 Copy the `deploy_role_arn` output, then:
 
 1. Go to `github.com/water-apps/waterapps-contact-form` → **Settings → Environments → production**
