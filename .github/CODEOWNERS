@@ -1,0 +1,7 @@
+# Protect Terraform and CI/CD controls in bootstrap repo.
+
+.github/workflows/** @vkaushik13
+terraform/** @vkaushik13
+scripts/** @vkaushik13
+tests/** @vkaushik13
+README.md @vkaushik13
