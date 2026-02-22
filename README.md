@@ -2,6 +2,13 @@
 
 Terraform that provisions the GitHub Actions OIDC identity provider and the scoped IAM deploy role used by all WaterApps CI/CD pipelines.
 
+## Repository Metadata
+
+- Standard name: `waterapps-10-bootstrap-oidc-iam`
+- Depends on: none
+- Provides: GitHub OIDC provider and AWS IAM deploy role for downstream repo CI/CD
+- Deploy order: `10`
+
 ## What it creates
 
 | Resource | Name | Purpose |
@@ -24,7 +31,7 @@ terraform apply
 
 Copy the `deploy_role_arn` output, then:
 
-1. Go to `github.com/vkaushik13/waterapps-contact-form` → **Settings → Environments → production**
+1. Go to `github.com/water-apps/waterapps-contact-form` → **Settings → Environments → production**
 2. Add secret `AWS_DEPLOY_ROLE_ARN` = the ARN from above
 3. Repeat for any other repos listed in `var.github_repos`
 
