@@ -32,6 +32,7 @@ variable "github_repos" {
   type        = list(string)
   default = [
     "waterapps-10-bootstrap-oidc-iam",
+    "waterapps-15-iam-access",
     "waterapps-20-infra-enterprise",
     "waterapps-contact-form",
   ]

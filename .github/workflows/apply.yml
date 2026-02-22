@@ -61,6 +61,7 @@ jobs:
             --variables-file terraform/variables.tf \
             --extra-org vkaushik13 \
             --require-repo waterapps-10-bootstrap-oidc-iam \
+            --require-repo waterapps-15-iam-access \
             --require-repo waterapps-20-infra-enterprise \
             --require-repo waterapps-contact-form
 
