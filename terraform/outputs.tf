@@ -17,3 +17,12 @@ output "state_lock_table" {
   description = "DynamoDB table name for Terraform state locking"
   value       = aws_dynamodb_table.terraform_lock.name
 }
+
+output "github_oidc_trusted_subjects" {
+  description = "OIDC subject patterns allowed to assume the GitHub deploy role (repo/org trust list)"
+  value = flatten([
+    for org in local.github_oidc_orgs : [
+      for repo in var.github_repos : "repo:${org}/${repo}:*"
+    ]
+  ])
+}

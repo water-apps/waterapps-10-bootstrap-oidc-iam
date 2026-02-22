@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - 'terraform/**'
-      - '**'
+      - '.github/workflows/apply.yml'
+      - 'scripts/**'
+      - 'tests/**'
   pull_request:
     branches: [main]
     paths:
@@ -52,6 +54,18 @@ jobs:
       - name: Terraform Format Check
         working-directory: terraform
         run: terraform fmt -check
+
+      - name: OIDC Preflight (repo/org drift guard)
+        run: |
+          python3 scripts/oidc_preflight.py check \
+            --variables-file terraform/variables.tf \
+            --extra-org vkaushik13 \
+            --require-repo waterapps-10-bootstrap-oidc-iam \
+            --require-repo waterapps-20-infra-enterprise \
+            --require-repo waterapps-contact-form
+
+      - name: Unit Tests (OIDC preflight)
+        run: python3 -m unittest discover -s tests -v
 
       - name: Security Scan — tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
