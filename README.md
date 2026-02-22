@@ -2,6 +2,10 @@
 
 Terraform that provisions the GitHub Actions OIDC identity provider and the scoped IAM deploy role used by all WaterApps CI/CD pipelines.
 
+## Public Reference Notice
+
+This repository is published as a generalized reference implementation for CI/CD bootstrap patterns. Details may be simplified or generalized to avoid exposing environment-specific operational information.
+
 ## Repository Metadata
 
 - Standard name: `waterapps-10-bootstrap-oidc-iam`
@@ -16,6 +20,17 @@ Terraform that provisions the GitHub Actions OIDC identity provider and the scop
 | `aws_iam_openid_connect_provider` | GitHub OIDC | Lets GitHub Actions assume AWS roles without long-lived keys |
 | `aws_iam_role` | `waterapps-prod-github-deploy` | Assumed by GitHub Actions workflows |
 | `aws_iam_role_policy` | `waterapps-prod-deploy-permissions` | Least-privilege access for Lambda, API GW, IAM, SES, CloudWatch |
+
+## OIDC Trust Flow (Mermaid)
+
+```mermaid
+flowchart LR
+    GH["GitHub Actions Workflow"] --> OIDC["GitHub OIDC Token"]
+    OIDC --> IAM["AWS IAM Deploy Role Trust Policy"]
+    IAM --> STS["STS AssumeRoleWithWebIdentity"]
+    STS --> TF["Terraform Apply / CI/CD Deploy"]
+    TF --> AWS["AWS Resources (Lambda, API GW, SES, CloudWatch, IAM)"]
+```
 
 ## First-time setup (chicken-and-egg)
 
