@@ -24,13 +24,17 @@ variable "environment" {
 variable "github_org" {
   description = "GitHub organisation or personal account that owns the repos"
   type        = string
-  default     = "vkaushik13"
+  default     = "water-apps"
 }
 
 variable "github_repos" {
   description = "GitHub repos authorised to assume the deploy role via OIDC"
   type        = list(string)
-  default     = ["waterapps-aws-bootstrap", "waterapps-contact-form"]
+  default = [
+    "waterapps-10-bootstrap-oidc-iam",
+    "waterapps-20-infra-enterprise",
+    "waterapps-contact-form",
+  ]
 
   validation {
     condition     = length(var.github_repos) > 0
