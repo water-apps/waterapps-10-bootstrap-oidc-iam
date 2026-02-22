@@ -23,6 +23,21 @@ on:
         options:
           - plan
           - apply
+      tf_state_bucket:
+        description: "S3 bucket for Terraform remote state"
+        required: false
+        default: ""
+        type: string
+      tf_state_key:
+        description: "S3 object key for Terraform state"
+        required: false
+        default: "bootstrap/terraform.tfstate"
+        type: string
+      tf_lock_table:
+        description: "DynamoDB table for Terraform state locking"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   id-token: write  # OIDC federation with AWS (after first manual apply)
@@ -78,8 +93,7 @@ jobs:
   apply:
     name: "Terraform ${{ github.event.inputs.action || 'plan' }}"
     needs: validate
-    # Only run on manual dispatch or main branch push; never on PRs
-    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -97,21 +111,45 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Require Remote State Configuration
+        run: |
+          missing=0
+          if [ -z "${{ github.event.inputs.tf_state_bucket }}" ]; then
+            echo "::error::workflow_dispatch input tf_state_bucket is required for remote state"
+            missing=1
+          fi
+          if [ -z "${{ github.event.inputs.tf_lock_table }}" ]; then
+            echo "::error::workflow_dispatch input tf_lock_table is required for DynamoDB locking"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "## Remote State Required" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Provide \`tf_state_bucket\` and \`tf_lock_table\` when dispatching this workflow." >> "$GITHUB_STEP_SUMMARY"
+            echo "- Bootstrap CI plan/apply is blocked with local state to avoid state loss on ephemeral runners." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ github.event.inputs.tf_state_bucket }}" \
+            -backend-config="key=${{ github.event.inputs.tf_state_key }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ github.event.inputs.tf_lock_table }}" \
+            -backend-config="encrypt=true"
 
       - name: Terraform Plan
         working-directory: terraform
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        if: github.event.inputs.action == 'apply'
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
 
       - name: Output Role ARN
-        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        if: github.event.inputs.action == 'apply'
         working-directory: terraform
         run: |
           echo "## Bootstrap Complete" >> $GITHUB_STEP_SUMMARY

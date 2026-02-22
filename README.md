@@ -44,6 +44,8 @@ terraform plan
 terraform apply
 ```
 
+For team-safe ongoing changes, configure remote Terraform state (S3 + DynamoDB locking) before using the GitHub Actions `workflow_dispatch` plan/apply path. The workflow now requires remote state inputs and will block local-state execution in CI.
+
 Copy the `deploy_role_arn` output, then:
 
 1. Go to `github.com/water-apps/waterapps-contact-form` → **Settings → Environments → production**
