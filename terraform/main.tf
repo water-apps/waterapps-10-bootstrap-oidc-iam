@@ -45,17 +45,11 @@ locals {
   # Trust only the configured GitHub org.
   github_oidc_orgs = [var.github_org]
 
-  # PR subjects are intentionally excluded to prevent AWS credential issuance on untrusted PR runs.
-  github_oidc_subject_suffixes = [
-    "ref:refs/heads/main",
-    "ref:refs/tags/*",
-    "environment:production",
-  ]
-
+  # PR subjects are intentionally excluded by default to avoid AWS credential issuance on untrusted PR runs.
   github_oidc_subjects = distinct(flatten([
     for org in local.github_oidc_orgs : flatten([
       for repo in var.github_repos : [
-        for suffix in local.github_oidc_subject_suffixes : "repo:${org}/${repo}:${suffix}"
+        for suffix in var.github_oidc_allowed_subject_suffixes : "repo:${org}/${repo}:${suffix}"
       ]
     ])
   ]))
