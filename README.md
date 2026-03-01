@@ -103,3 +103,10 @@ terraform/
 .github/workflows/
   apply.yml      # validate on PR; plan/apply on manual dispatch
 ```
+
+## Documentation
+
+- `docs/ARCHITECTURE.md`
+- `docs/DEPLOYMENT_GUIDE.md`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `docs/SECURITY_BASELINE.md`
