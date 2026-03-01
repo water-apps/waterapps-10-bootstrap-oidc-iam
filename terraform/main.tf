@@ -386,7 +386,7 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "dynamodb:DeleteItem",
           "dynamodb:CreateTable",
           "dynamodb:DeleteTable",
-          "dynamodb:DescribeTable",
+          "dynamodb:Describe*",
           "dynamodb:TagResource",
           "dynamodb:UntagResource",
           "dynamodb:ListTagsOfResource",
