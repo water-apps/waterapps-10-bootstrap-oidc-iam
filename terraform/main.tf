@@ -331,6 +331,9 @@ resource "aws_iam_role_policy" "deploy_permissions" {
         Effect = "Allow"
         Action = [
           "ses:VerifyEmailIdentity",
+          "ses:VerifyDomainIdentity",
+          "ses:VerifyDomainDkim",
+          "ses:SetIdentityMailFromDomain",
           "ses:DeleteIdentity",
           "ses:GetIdentityVerificationAttributes",
           "ses:ListIdentities",
@@ -400,6 +403,17 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "dynamodb:ListTagsOfResource",
         ]
         Resource = "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.project}-terraform-lock"
+      },
+      # Terraform also reconciles tags on application tables that share the waterapps-* prefix.
+      {
+        Sid    = "DynamoDBTaggingWaterappsTables"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:TagResource",
+          "dynamodb:UntagResource",
+          "dynamodb:ListTagsOfResource",
+        ]
+        Resource = "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.project}-*"
       },
 
       # ── IAM OIDC — bootstrap manages its own OIDC provider ─────────────────
