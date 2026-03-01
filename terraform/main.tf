@@ -373,6 +373,7 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "s3:CreateBucket",
           "s3:DeleteBucket",
           "s3:GetBucket*",
+          "s3:GetAccelerateConfiguration",
           "s3:PutBucket*",
           "s3:DeleteBucketPolicy",
         ]
