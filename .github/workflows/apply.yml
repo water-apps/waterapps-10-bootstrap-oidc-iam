@@ -182,6 +182,56 @@ jobs:
             -backend-config="dynamodb_table=${{ github.event.inputs.tf_lock_table }}" \
             -backend-config="encrypt=true"
 
+      - name: Reconcile existing bootstrap resources into state
+        if: github.event.inputs.action == 'apply'
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+
+          project="waterapps"
+          environment_name="prod"
+          state_bucket_name="${project}-terraform-state"
+          lock_table_name="${project}-terraform-lock"
+          deploy_role_name="${project}-${environment_name}-github-deploy"
+          deploy_policy_name="${project}-${environment_name}-deploy-permissions"
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          oidc_provider_arn="arn:aws:iam::${account_id}:oidc-provider/token.actions.githubusercontent.com"
+
+          import_if_missing() {
+            address="$1"
+            import_id="$2"
+            if terraform state show "$address" >/dev/null 2>&1; then
+              echo "State already contains $address"
+              return
+            fi
+            echo "Importing $address -> $import_id"
+            terraform import -input=false "$address" "$import_id"
+          }
+
+          # Existing shared state resources (idempotent import)
+          if aws s3api head-bucket --bucket "$state_bucket_name" >/dev/null 2>&1; then
+            import_if_missing "aws_s3_bucket.terraform_state" "$state_bucket_name"
+            import_if_missing "aws_s3_bucket_versioning.terraform_state" "$state_bucket_name"
+            import_if_missing "aws_s3_bucket_server_side_encryption_configuration.terraform_state" "$state_bucket_name"
+            import_if_missing "aws_s3_bucket_public_access_block.terraform_state" "$state_bucket_name"
+          fi
+
+          if aws dynamodb describe-table --table-name "$lock_table_name" >/dev/null 2>&1; then
+            import_if_missing "aws_dynamodb_table.terraform_lock" "$lock_table_name"
+          fi
+
+          if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$oidc_provider_arn" >/dev/null 2>&1; then
+            import_if_missing "aws_iam_openid_connect_provider.github" "$oidc_provider_arn"
+          fi
+
+          if aws iam get-role --role-name "$deploy_role_name" >/dev/null 2>&1; then
+            import_if_missing "aws_iam_role.github_deploy" "$deploy_role_name"
+          fi
+
+          if aws iam get-role-policy --role-name "$deploy_role_name" --policy-name "$deploy_policy_name" >/dev/null 2>&1; then
+            import_if_missing "aws_iam_role_policy.deploy_permissions" "${deploy_role_name}:${deploy_policy_name}"
+          fi
+
       - name: Terraform Plan
         working-directory: terraform
         run: terraform plan -out=tfplan
