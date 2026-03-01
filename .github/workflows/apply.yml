@@ -12,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'terraform/**'
+      - '.github/workflows/apply.yml'
   # Apply is manual only — bootstrap is sensitive and should never auto-apply
   workflow_dispatch:
     inputs:
