@@ -13,6 +13,11 @@ This repository is published as a generalized reference implementation for CI/CD
 - Provides: GitHub OIDC provider and AWS IAM deploy role for downstream repo CI/CD
 - Deploy order: `10`
 
+## Operational Docs
+
+- `docs/LEARNINGS-2026-03-01.md` — lessons from first full bootstrap reconciliation
+- `docs/BOOTSTRAP_RECONCILIATION_RUNBOOK.md` — step-by-step recovery and verification guide
+
 ## What it creates
 
 | Resource | Name | Purpose |
