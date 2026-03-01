@@ -42,9 +42,23 @@ provider "aws" {
 }
 
 locals {
-  # During repo migration, allow both the legacy owner and the GitHub org.
-  # Keep var.github_org as the primary source, but include water-apps for moved repos.
-  github_oidc_orgs = distinct([var.github_org, "water-apps"])
+  # Trust only the configured GitHub org.
+  github_oidc_orgs = [var.github_org]
+
+  # PR subjects are intentionally excluded to prevent AWS credential issuance on untrusted PR runs.
+  github_oidc_subject_suffixes = [
+    "ref:refs/heads/main",
+    "ref:refs/tags/*",
+    "environment:production",
+  ]
+
+  github_oidc_subjects = distinct(flatten([
+    for org in local.github_oidc_orgs : flatten([
+      for repo in var.github_repos : [
+        for suffix in local.github_oidc_subject_suffixes : "repo:${org}/${repo}:${suffix}"
+      ]
+    ])
+  ]))
 }
 
 # ─────────────────────────────────────────────
@@ -145,15 +159,9 @@ resource "aws_iam_role" "github_deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Allow any branch/tag in authorised repos — branch restrictions
-          # are enforced by GitHub environment protection rules instead.
-          "token.actions.githubusercontent.com:sub" = [
-            for pair in flatten([
-              for org in local.github_oidc_orgs : [
-                for repo in var.github_repos : "repo:${org}/${repo}:*"
-              ]
-            ]) : pair
-          ]
+          # Keep the AWS trust boundary explicit. GitHub-side controls still matter,
+          # but AWS should not accept every subject for an authorised repo.
+          "token.actions.githubusercontent.com:sub" = local.github_oidc_subjects
         }
       }
     }]
