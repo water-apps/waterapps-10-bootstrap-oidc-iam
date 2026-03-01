@@ -20,9 +20,5 @@ output "state_lock_table" {
 
 output "github_oidc_trusted_subjects" {
   description = "OIDC subject patterns allowed to assume the GitHub deploy role (repo/org trust list)"
-  value = flatten([
-    for org in local.github_oidc_orgs : [
-      for repo in var.github_repos : "repo:${org}/${repo}:*"
-    ]
-  ])
+  value       = local.github_oidc_subjects
 }
