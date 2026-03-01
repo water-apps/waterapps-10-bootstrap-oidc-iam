@@ -369,6 +369,9 @@ resource "aws_iam_role_policy" "deploy_permissions" {
         Action = [
           "s3:CreateBucket",
           "s3:DeleteBucket",
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy",
+          "s3:DeleteBucketPolicy",
           "s3:GetBucketVersioning",
           "s3:PutBucketVersioning",
           "s3:GetEncryptionConfiguration",
