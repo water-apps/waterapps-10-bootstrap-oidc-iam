@@ -334,6 +334,8 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "ses:VerifyDomainIdentity",
           "ses:VerifyDomainDkim",
           "ses:SetIdentityMailFromDomain",
+          "ses:GetIdentityDkimAttributes",
+          "ses:GetIdentityMailFromDomainAttributes",
           "ses:DeleteIdentity",
           "ses:GetIdentityVerificationAttributes",
           "ses:ListIdentities",
@@ -373,11 +375,19 @@ resource "aws_iam_role_policy" "deploy_permissions" {
           "s3:CreateBucket",
           "s3:DeleteBucket",
           "s3:GetBucket*",
-          "s3:GetAccelerateConfiguration",
           "s3:PutBucket*",
           "s3:DeleteBucketPolicy",
         ]
         Resource = "arn:aws:s3:::${var.project}-terraform-state"
+      },
+      # GetAccelerateConfiguration requires wildcard resource scope.
+      {
+        Sid    = "S3GetAccelerateConfiguration"
+        Effect = "Allow"
+        Action = [
+          "s3:GetAccelerateConfiguration",
+        ]
+        Resource = "*"
       },
 
       # ── DynamoDB — Terraform state locking ─────────────────────────────────
