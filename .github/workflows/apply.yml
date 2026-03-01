@@ -235,7 +235,14 @@ jobs:
 
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -out=tfplan
+        run: |
+          # Break-glass for bootstrap deadlocks: allow policy self-heal even when
+          # refresh-time reads fail due missing newly-added permissions.
+          if [ "${{ github.event.inputs.action }}" = "apply" ]; then
+            terraform plan -refresh=false -out=tfplan
+          else
+            terraform plan -out=tfplan
+          fi
 
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply'
