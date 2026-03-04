@@ -43,6 +43,16 @@ variable "github_repos" {
   }
 }
 
+variable "github_oidc_allowed_subject_suffixes" {
+  description = "Allowed GitHub OIDC subject suffixes for each authorized repo (for example ref:refs/heads/main, ref:refs/tags/*, environment:production)"
+  type        = list(string)
+  default = [
+    "ref:refs/heads/main",
+    "ref:refs/tags/*",
+    "environment:production",
+  ]
+}
+
 variable "common_tags" {
   description = "Tags applied to all resources"
   type        = map(string)
